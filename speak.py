@@ -21,15 +21,13 @@ API_KEY = os.getenv("ELEVENLABS_API_KEY")
 if not API_KEY:
     raise RuntimeError("ELEVENLABS_API_KEY not set in .env")
 
-# George — warm British voice that takes Scottish accent audio tags well on eleven_v3.
-# Community Scottish voices (e.g. Scott, Archie) require a paid ElevenLabs plan.
-# On free tier: [Scottish accent] tag in the text + eleven_v3 model works cleanly.
-DEFAULT_VOICE_ID = "JBFqnCBsd6RMkjVDRZzb"  # George
-
-DEFAULT_MODEL = "eleven_v3"
-
-# Prepended to every synthesis call — tells v3 to emulate a Scottish accent.
-ACCENT_TAG = "[Scottish accent]"
+# Voice config via .env — different instances (MacClaude, Fraggy) can have different voices.
+# MacClaude default: George (JBFqnCBsd6RMkjVDRZzb) + [Scottish accent] tag
+# Fraggy default:    Chris  (iP95p4xoKVk53GoZ742B) + no accent tag (natural American)
+DEFAULT_VOICE_ID = os.getenv("TTS_VOICE_ID", "JBFqnCBsd6RMkjVDRZzb")  # George
+DEFAULT_MODEL    = os.getenv("TTS_MODEL", "eleven_v3")
+# Set TTS_ACCENT_TAG="" in .env to disable accent tagging (e.g. for American voices)
+ACCENT_TAG       = os.getenv("TTS_ACCENT_TAG", "[Scottish accent]")
 
 OUTPUT_DIR = os.path.join(os.path.dirname(__file__), "output")
 os.makedirs(OUTPUT_DIR, exist_ok=True)
