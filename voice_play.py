@@ -30,7 +30,7 @@ log = logging.getLogger(__name__)
 logging.basicConfig(level=logging.WARNING)
 
 
-async def play_in_voice(mp3_path: str) -> None:
+async def play_in_voice(mp3_path: str, user_id: int = USER_ID) -> None:
     intents = discord.Intents.default()
     intents.voice_states = True
     intents.guilds = True
@@ -47,7 +47,7 @@ async def play_in_voice(mp3_path: str) -> None:
             return
 
         # Find which voice channel the target user is in
-        member = guild.get_member(USER_ID)
+        member = guild.get_member(user_id)
         if member is None or member.voice is None or member.voice.channel is None:
             print("ERROR: target user is not in a voice channel")
             await bot.close()
@@ -74,13 +74,15 @@ async def play_in_voice(mp3_path: str) -> None:
 
 
 if __name__ == "__main__":
-    if len(sys.argv) < 2:
-        print("Usage: python voice_play.py /path/to/audio.mp3")
+    import argparse
+    parser = argparse.ArgumentParser(description="Play audio in a Discord voice channel")
+    parser.add_argument("mp3_path", help="Path to the mp3 file")
+    parser.add_argument("--user-id", type=int, default=USER_ID,
+                        help="Discord user ID to follow into their voice channel")
+    args = parser.parse_args()
+
+    if not os.path.exists(args.mp3_path):
+        print(f"ERROR: file not found: {args.mp3_path}")
         sys.exit(1)
 
-    mp3_path = sys.argv[1]
-    if not os.path.exists(mp3_path):
-        print(f"ERROR: file not found: {mp3_path}")
-        sys.exit(1)
-
-    asyncio.run(play_in_voice(mp3_path))
+    asyncio.run(play_in_voice(args.mp3_path, user_id=args.user_id))
