@@ -18,7 +18,7 @@ def list_voices(filter_keyword: str = "") -> None:
     for v in voices:
         name = v["name"]
         voice_id = v["voice_id"]
-        labels = v.get("labels", {})
+        labels = v.get("labels") or {}
         accent = labels.get("accent", "")
         description = labels.get("description", "")
         category = v.get("category", "")
