@@ -30,7 +30,7 @@ DEFAULT_MODEL    = os.getenv("TTS_MODEL", "eleven_v3")
 # Set TTS_ACCENT_TAG="" in .env to disable accent tagging (e.g. for American voices)
 ACCENT_TAG       = os.getenv("TTS_ACCENT_TAG", "[Scottish accent]")
 # Playback speed multiplier applied via ffmpeg after generation (1.0 = no change)
-TTS_SPEED        = float(os.getenv("TTS_SPEED", "1.1"))
+TTS_SPEED        = float(os.getenv("TTS_SPEED", "1.05"))
 
 OUTPUT_DIR = os.path.join(os.path.dirname(__file__), "output")
 os.makedirs(OUTPUT_DIR, exist_ok=True)
