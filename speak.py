@@ -11,6 +11,7 @@ import os
 import sys
 import argparse
 import tempfile
+import subprocess
 import requests
 import logging
 from dotenv import load_dotenv
@@ -28,6 +29,8 @@ DEFAULT_VOICE_ID = os.getenv("TTS_VOICE_ID", "m99arlGCGHhMIOwh8bGc")  # Scott â€
 DEFAULT_MODEL    = os.getenv("TTS_MODEL", "eleven_v3")
 # Set TTS_ACCENT_TAG="" in .env to disable accent tagging (e.g. for American voices)
 ACCENT_TAG       = os.getenv("TTS_ACCENT_TAG", "[Scottish accent]")
+# Playback speed multiplier applied via ffmpeg after generation (1.0 = no change)
+TTS_SPEED        = float(os.getenv("TTS_SPEED", "1.1"))
 
 OUTPUT_DIR = os.path.join(os.path.dirname(__file__), "output")
 os.makedirs(OUTPUT_DIR, exist_ok=True)
@@ -51,9 +54,9 @@ def synthesize(text: str, voice_id: str = DEFAULT_VOICE_ID, model: str = DEFAULT
         "text": text,
         "model_id": model,
         "voice_settings": {
-            "stability": 0.20,
+            "stability": 0.35,
             "similarity_boost": 0.85,
-            "style": 0.68,
+            "style": 0.60,
             "use_speaker_boost": True,
         },
     }
@@ -61,13 +64,23 @@ def synthesize(text: str, voice_id: str = DEFAULT_VOICE_ID, model: str = DEFAULT
     resp = requests.post(url, headers=headers, json=payload)
     resp.raise_for_status()
 
-    # Write to a named temp file in the output directory so the path persists
-    # long enough for the Discord plugin to attach it.
-    fd, path = tempfile.mkstemp(suffix=".mp3", dir=OUTPUT_DIR)
+    # Write raw ElevenLabs output to a temp file
+    fd, raw_path = tempfile.mkstemp(suffix=".mp3", dir=OUTPUT_DIR)
     with os.fdopen(fd, "wb") as f:
         f.write(resp.content)
 
-    return path
+    # Apply speed adjustment via ffmpeg (atempo filter, quality-preserving)
+    if TTS_SPEED != 1.0:
+        fd2, final_path = tempfile.mkstemp(suffix=".mp3", dir=OUTPUT_DIR)
+        os.close(fd2)
+        subprocess.run(
+            ["ffmpeg", "-y", "-i", raw_path, "-filter:a", f"atempo={TTS_SPEED}", final_path],
+            check=True, capture_output=True,
+        )
+        os.remove(raw_path)
+        return final_path
+
+    return raw_path
 
 
 if __name__ == "__main__":
