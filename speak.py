@@ -24,7 +24,7 @@ if not API_KEY:
 # Voice config via .env — different instances (MacClaude, Fraggy) can have different voices.
 # MacClaude default: George (JBFqnCBsd6RMkjVDRZzb) + [Scottish accent] tag
 # Fraggy default:    Chris  (iP95p4xoKVk53GoZ742B) + no accent tag (natural American)
-DEFAULT_VOICE_ID = os.getenv("TTS_VOICE_ID", "JBFqnCBsd6RMkjVDRZzb")  # George
+DEFAULT_VOICE_ID = os.getenv("TTS_VOICE_ID", "m99arlGCGHhMIOwh8bGc")  # Scott — Early 30s Scottish Male (the only voice)
 DEFAULT_MODEL    = os.getenv("TTS_MODEL", "eleven_v3")
 # Set TTS_ACCENT_TAG="" in .env to disable accent tagging (e.g. for American voices)
 ACCENT_TAG       = os.getenv("TTS_ACCENT_TAG", "[Scottish accent]")
@@ -51,9 +51,9 @@ def synthesize(text: str, voice_id: str = DEFAULT_VOICE_ID, model: str = DEFAULT
         "text": text,
         "model_id": model,
         "voice_settings": {
-            "stability": 0.25,
+            "stability": 0.20,
             "similarity_boost": 0.85,
-            "style": 0.6,
+            "style": 0.68,
             "use_speaker_boost": True,
         },
     }
