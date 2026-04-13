@@ -51,8 +51,10 @@ def synthesize(text: str, voice_id: str = DEFAULT_VOICE_ID, model: str = DEFAULT
         "text": text,
         "model_id": model,
         "voice_settings": {
-            "stability": 0.5,
-            "similarity_boost": 0.75,
+            "stability": 0.25,
+            "similarity_boost": 0.85,
+            "style": 0.6,
+            "use_speaker_boost": True,
         },
     }
 
