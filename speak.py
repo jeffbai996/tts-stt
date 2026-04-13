@@ -42,7 +42,7 @@ log = logging.getLogger(__name__)
 def synthesize(text: str, voice_id: str = DEFAULT_VOICE_ID, model: str = DEFAULT_MODEL) -> str:
     """Convert text to speech. Returns absolute path to the mp3 file."""
     # Prepend accent tag if not already present — v3 uses this to emulate Scottish
-    if not text.startswith("["):
+    if ACCENT_TAG and not text.lstrip().startswith("["):
         text = f"{ACCENT_TAG} {text}"
 
     url = f"https://api.elevenlabs.io/v1/text-to-speech/{voice_id}"
@@ -62,7 +62,10 @@ def synthesize(text: str, voice_id: str = DEFAULT_VOICE_ID, model: str = DEFAULT
     }
 
     resp = requests.post(url, headers=headers, json=payload)
-    resp.raise_for_status()
+    try:
+        resp.raise_for_status()
+    except requests.exceptions.HTTPError as e:
+        raise RuntimeError(f"ElevenLabs API error: {resp.text}") from e
 
     # Write raw ElevenLabs output to a temp file
     fd, raw_path = tempfile.mkstemp(suffix=".mp3", dir=OUTPUT_DIR)
@@ -73,12 +76,19 @@ def synthesize(text: str, voice_id: str = DEFAULT_VOICE_ID, model: str = DEFAULT
     if TTS_SPEED != 1.0:
         fd2, final_path = tempfile.mkstemp(suffix=".mp3", dir=OUTPUT_DIR)
         os.close(fd2)
-        subprocess.run(
-            ["ffmpeg", "-y", "-i", raw_path, "-filter:a", f"atempo={TTS_SPEED}", final_path],
-            check=True, capture_output=True,
-        )
-        os.remove(raw_path)
-        return final_path
+        try:
+            subprocess.run(
+                ["ffmpeg", "-y", "-i", raw_path, "-filter:a", f"atempo={TTS_SPEED}", final_path],
+                check=True, capture_output=True,
+            )
+            return final_path
+        except subprocess.CalledProcessError as e:
+            if os.path.exists(final_path):
+                os.remove(final_path)
+            raise RuntimeError(f"ffmpeg failed: {e.stderr.decode()}") from e
+        finally:
+            if os.path.exists(raw_path):
+                os.remove(raw_path)
 
     return raw_path
 
