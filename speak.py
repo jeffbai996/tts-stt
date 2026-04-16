@@ -1,8 +1,8 @@
 """
-MacClaude TTS — text → ElevenLabs → mp3 file path.
+tts-stt — text → ElevenLabs → mp3 file path.
 
 Usage:
-    python speak.py "Aye, nae bother mate"
+    python speak.py "Hello there"
     python speak.py "Some text" --voice <voice_id>
 
 Returns the path to the generated mp3 on stdout (so callers can grab it).
@@ -25,7 +25,7 @@ if not API_KEY:
 # Voice config via .env — different instances (MacClaude, Fraggy) can have different voices.
 # MacClaude default: Scott (m99arlGCGHhMIOwh8bGc) — native Scottish, no accent tag needed
 # Fraggy default:    Chris (iP95p4xoKVk53GoZ742B) — natural American, no accent tag
-DEFAULT_VOICE_ID = os.getenv("TTS_VOICE_ID", "m99arlGCGHhMIOwh8bGc")  # Scott — Early 30s Scottish Male (the only voice)
+DEFAULT_VOICE_ID = os.getenv("TTS_VOICE_ID", "m99arlGCGHhMIOwh8bGc")  # Scott — Early 30s Scottish Male
 DEFAULT_MODEL    = os.getenv("TTS_MODEL", "eleven_v3")
 # Set TTS_ACCENT_TAG="" in .env to disable accent tagging (e.g. for American voices)
 ACCENT_TAG       = os.getenv("TTS_ACCENT_TAG", "[Scottish accent]")
@@ -94,7 +94,7 @@ def synthesize(text: str, voice_id: str = DEFAULT_VOICE_ID, model: str = DEFAULT
 
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="MacClaude TTS")
+    parser = argparse.ArgumentParser(description="tts-stt speak")
     parser.add_argument("text", nargs="+", help="Text to synthesize")
     parser.add_argument("--voice", default=DEFAULT_VOICE_ID, help="ElevenLabs voice ID")
     parser.add_argument("--model", default=DEFAULT_MODEL, help="ElevenLabs model ID")

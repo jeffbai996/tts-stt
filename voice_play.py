@@ -10,7 +10,7 @@ Usage:
 Environment (via .env):
     DISCORD_BOT_TOKEN   — bot token
     DISCORD_GUILD_ID    — server (guild) ID
-    DISCORD_USER_ID     — Jeff's Discord user ID (bot follows him into his vc)
+    DISCORD_USER_ID     — target Discord user ID (bot follows them into their vc)
 """
 import os
 import sys
