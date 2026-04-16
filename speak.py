@@ -25,12 +25,24 @@ if not API_KEY:
 # Voice config via .env — different instances (MacClaude, Fraggy) can have different voices.
 # MacClaude default: Scott (m99arlGCGHhMIOwh8bGc) — native Scottish, no accent tag needed
 # Fraggy default:    Chris (iP95p4xoKVk53GoZ742B) — natural American, no accent tag
-DEFAULT_VOICE_ID = os.getenv("TTS_VOICE_ID", "m99arlGCGHhMIOwh8bGc")  # Scott — Early 30s Scottish Male
+DEFAULT_VOICE_ID = os.getenv("TTS_VOICE_ID", "m99arlGCGHhMIOwh8bGc")
+# Optional Chinese voice — auto-selected when text is majority-CJK
+DEFAULT_VOICE_ID_ZH = os.getenv("TTS_VOICE_ID_ZH")
 DEFAULT_MODEL    = os.getenv("TTS_MODEL", "eleven_v3")
 # Set TTS_ACCENT_TAG="" in .env to disable accent tagging (e.g. for American voices)
 ACCENT_TAG       = os.getenv("TTS_ACCENT_TAG", "[Scottish accent]")
 # Playback speed multiplier applied via ffmpeg after generation (1.0 = no change)
 TTS_SPEED        = float(os.getenv("TTS_SPEED", "1.05"))
+
+
+def _is_cjk(text: str, threshold: float = 0.3) -> bool:
+    """Return True if >threshold fraction of non-whitespace chars are CJK."""
+    chars = [c for c in text if not c.isspace()]
+    if not chars:
+        return False
+    # CJK Unified Ideographs + common CJK ranges
+    cjk = sum(1 for c in chars if '\u4e00' <= c <= '\u9fff' or '\u3400' <= c <= '\u4dbf')
+    return (cjk / len(chars)) > threshold
 
 OUTPUT_DIR = os.path.join(os.path.dirname(__file__), "output")
 os.makedirs(OUTPUT_DIR, exist_ok=True)
@@ -41,8 +53,13 @@ log = logging.getLogger(__name__)
 
 def synthesize(text: str, voice_id: str = DEFAULT_VOICE_ID, model: str = DEFAULT_MODEL) -> str:
     """Convert text to speech. Returns absolute path to the mp3 file."""
-    # Prepend accent tag if not already present — v3 uses this to emulate Scottish
-    if ACCENT_TAG and not text.lstrip().startswith("["):
+    # Auto-swap to Chinese voice if text is majority-CJK and caller didn't override
+    is_zh = _is_cjk(text)
+    if is_zh and voice_id == DEFAULT_VOICE_ID and DEFAULT_VOICE_ID_ZH:
+        voice_id = DEFAULT_VOICE_ID_ZH
+
+    # Prepend accent tag if not already present — skip for CJK (accent tags are English-only)
+    if ACCENT_TAG and not is_zh and not text.lstrip().startswith("["):
         text = f"{ACCENT_TAG} {text}"
 
     url = f"https://api.elevenlabs.io/v1/text-to-speech/{voice_id}"
