@@ -1,7 +1,9 @@
 venv/
 __pycache__/
+.pytest_cache/
 *.pyc
 .env
+.DS_Store
 *.mp3
 output/
 transcripts/
