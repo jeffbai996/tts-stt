@@ -22,9 +22,8 @@ API_KEY = os.getenv("ELEVENLABS_API_KEY")
 if not API_KEY:
     raise RuntimeError("ELEVENLABS_API_KEY not set in .env")
 
-# Voice config via .env — different instances (MacClaude, Fraggy) can have different voices.
-# MacClaude default: Scott (m99arlGCGHhMIOwh8bGc) — native Scottish, no accent tag needed
-# Fraggy default:    Chris (iP95p4xoKVk53GoZ742B) — natural American, no accent tag
+# Voice config via .env — different instances can have different voices.
+# Default below points at a Scottish-accent voice; override TTS_VOICE_ID per instance.
 DEFAULT_VOICE_ID = os.getenv("TTS_VOICE_ID", "m99arlGCGHhMIOwh8bGc")
 # Optional Chinese voice — auto-selected when text is majority-CJK
 DEFAULT_VOICE_ID_ZH = os.getenv("TTS_VOICE_ID_ZH")

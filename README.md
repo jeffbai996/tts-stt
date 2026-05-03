@@ -35,7 +35,7 @@ python listen.py /path/to/audio.ogg
 
 ## Configuration
 
-All settings live in `.env` (see `env.example` for the full list). Per-instance voice config is the main knob — MacClaude uses Scott (Scottish), Fraggy uses Chris (American), Claudsson uses a Mandarin voice. Each bot sets its own `TTS_VOICE_ID`, `TTS_ACCENT_TAG`, and `STT_LANGUAGE` via its own `.env`.
+All settings live in `.env` (see `env.example` for the full list). Per-instance voice config is the main knob — give each agent/bot its own voice by setting `TTS_VOICE_ID`, `TTS_ACCENT_TAG`, and `STT_LANGUAGE` in that instance's `.env`.
 
 Key env vars:
 - `ELEVENLABS_API_KEY` — required for TTS

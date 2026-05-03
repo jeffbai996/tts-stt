@@ -2,7 +2,7 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Add batch speech-to-text via `listen.py`, a sibling to `speak.py` that subprocesses to the local `whisper` CLI. File path in → pure transcript on stdout. Plug-and-play across MacClaude (Mac) and Fraggy/Claudsson (HOST WSL) via `.env` config only.
+**Goal:** Add batch speech-to-text via `listen.py`, a sibling to `speak.py` that subprocesses to the local `whisper` CLI. File path in → pure transcript on stdout. Plug-and-play across multiple agent instances and host OSes (macOS, Linux/WSL) via `.env` config only.
 
 **Architecture:** Single new script `listen.py`, subprocesses `shutil.which("whisper")`. Reads intermediate `.txt` output, cleans up, prints transcript. Zero changes to existing files (`speak.py`, `voice_play.py`, `list_voices.py`). New `tests/` directory (doesn't exist yet). pytest added to `requirements.txt`.
 
@@ -1029,10 +1029,7 @@ Append to whichever file exists (or create `.env.example` if neither):
 # Model size — trade speed vs accuracy. base is 0.76x real-time on Apple Silicon.
 STT_MODEL=base
 
-# Language code (e.g. en, zh, ja). Skips auto-detect. Set per bot:
-#   MacClaude:  en
-#   Claudsson:  zh
-#   Fraggy:     en
+# Language code (e.g. en, zh, ja). Skips auto-detect. Set per instance.
 STT_LANGUAGE=en
 
 # Where intermediate whisper files land. Default: <repo>/transcripts/

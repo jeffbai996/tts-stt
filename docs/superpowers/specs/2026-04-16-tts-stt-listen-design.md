@@ -8,14 +8,14 @@
 
 The tts-stt repo currently ships two capabilities: text-to-speech (`speak.py`, ElevenLabs) and Discord voice-channel playback (`voice_play.py`). The repo name promises a third — speech-to-text — which has never been implemented. Voice notes currently arrive in each bot's Discord inbox (`~/.claude/channels/discord/inbox/`) as Ogg Opus files and are not processed.
 
-The `whisper` CLI (from `openai-whisper`) is already installed on both deployment targets (Mac via homebrew, HOST WSL via pip3). Benchmarking on Apple Silicon (Mac, base model) showed 0.76x real-time transcription of real speech — a 7-second clip transcribed in 5.4 seconds with perfect accuracy. HOST x86 CPU is expected to run ~1.5–2x real-time, acceptable for async voice-note handling.
+The `whisper` CLI (from `openai-whisper`) is already installed on both deployment targets (macOS via homebrew, Linux/WSL via pip3). Benchmarking on Apple Silicon (base model) showed 0.76x real-time transcription of real speech — a 7-second clip transcribed in 5.4 seconds with perfect accuracy. The Linux/WSL x86 CPU host is expected to run ~1.5–2x real-time, acceptable for async voice-note handling.
 
-This spec adds batch STT only. Streaming STT for real-time Discord voice chat is a separate project (see HOST-side `project_voice_chat.md`) and is out of scope.
+This spec adds batch STT only. Streaming STT for real-time Discord voice chat is a separate project (tracked in `project_voice_chat.md` on the relevant host) and is out of scope.
 
 ## Goals
 
 1. **Mirror `speak.py`'s contract.** File path in, pure stdout output, env-driven config, zero bot-specific knowledge.
-2. **Plug-and-play across bots.** Same script runs MacClaude (Mac, English, Scott voice) and would run Fraggy / Claudsson (HOST, potentially different languages) with no code changes — only `.env` differences.
+2. **Plug-and-play across instances.** Same script runs across multiple agents/hosts (macOS, Linux/WSL) with no code changes — only `.env` differences (voice, language, accent).
 3. **No new Python dependencies.** The `whisper` CLI is a system tool, not a pip dep. Adding `openai-whisper` to `requirements.txt` would drag ~2GB of PyTorch into every venv.
 4. **Test-driven.** Test plan reviewed and approved before implementation per CLAUDE.md policy.
 
@@ -105,10 +105,7 @@ No new secrets. `ELEVENLABS_API_KEY` stays a TTS-only concern.
 # Model size — trade speed vs accuracy. base is 0.76x real-time on Apple Silicon.
 STT_MODEL=base
 
-# Language code (e.g. en, zh, ja). Skips auto-detect. Set per bot:
-#   MacClaude:  en
-#   Claudsson:  zh
-#   Fraggy:     en
+# Language code (e.g. en, zh, ja). Skips auto-detect. Set per instance.
 STT_LANGUAGE=en
 
 # Where intermediate whisper files land. Gitignored; cleaned up after each run.
@@ -140,7 +137,7 @@ Follows `speak.py`'s pattern — raise `RuntimeError` with context, let the call
      --fp16 False \
      --verbose False
    ```
-   `--fp16 False` required on CPU-only machines (both Mac CPU and HOST WSL). `--verbose False` keeps whisper's per-segment chatter out of stderr.
+   `--fp16 False` required on CPU-only machines (any non-CUDA host, including macOS and Linux/WSL CPU). `--verbose False` keeps whisper's per-segment chatter out of stderr.
 3. **Read transcript** from the `.txt` file whisper writes into `STT_OUTPUT_DIR`. Strip surrounding whitespace.
 4. **Clean up** the intermediate `.txt` (and `.json`, `.srt`, etc. if whisper leaves any) before exit. Mirrors `speak.py`'s ffmpeg temp-file hygiene.
 5. **Print transcript to stdout**, newline-terminated, nothing else.
@@ -181,10 +178,10 @@ This is the load-bearing section — the "multi-bot OSS foundation" framing requ
 Guarantees:
 
 1. **No hardcoded paths.** `STT_OUTPUT_DIR` resolves relative to the script's own directory by default.
-2. **No hardcoded bot identity.** Script has no knowledge of MacClaude, Fraggy, Claudsson, or any bot name.
+2. **No hardcoded bot identity.** Script has no knowledge of any specific bot name.
 3. **No hardcoded language or model.** Both live in `.env`, overridable per-bot.
 4. **System-level dep only.** `whisper` CLI on PATH. Documented in `.env.example` (README creation deferred). No PyTorch in the venv.
-5. **Deploy pattern unchanged.** `git pull` on Mac, `git pull` on HOST. No schema migration, no new ports, no new services.
+5. **Deploy pattern unchanged.** `git pull` on each host that runs the script. No schema migration, no new ports, no new services.
 
 ## README Updates
 
@@ -195,9 +192,9 @@ The repo has no README currently. This spec does not require creating one — re
 No migration needed. `listen.py` is purely additive. Existing `speak.py` and `voice_play.py` callers are unaffected.
 
 Rollout order once implementation is complete:
-1. Ship on Mac (MacClaude): `git push` → `git pull` on Mac → test with a Discord voice note in MacClaude's inbox
-2. Ship on HOST (Fraggy / Claudsson): `git pull` on HOST → test with a voice note in Fraggy's inbox
-3. Update HOST-side `project_voice_chat.md` memory to note batch STT is now live (streaming voice chat remains a separate TBD).
+1. Ship to first host: `git push` → `git pull` on that host → test with a Discord voice note in its inbox.
+2. Ship to remaining hosts: `git pull` → test with a voice note in each.
+3. Update any `project_voice_chat.md` notes on the relevant host to record that batch STT is now live (streaming voice chat remains a separate TBD).
 
 ## Open Questions
 
