@@ -7,3 +7,8 @@ __pycache__/
 *.mp3
 output/
 transcripts/
+
+# Internal architecture plans/specs — kept locally for agent context, never
+# committed. Public repo; these inevitably leak internal infra details.
+docs/superpowers/
+docs/handoff-prompts/
