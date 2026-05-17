@@ -32,6 +32,12 @@ DEFAULT_MODEL    = os.getenv("TTS_MODEL", "eleven_v3")
 ACCENT_TAG       = os.getenv("TTS_ACCENT_TAG", "[Scottish accent]")
 # Playback speed multiplier applied via ffmpeg after generation (1.0 = no change)
 TTS_SPEED        = float(os.getenv("TTS_SPEED", "1.05"))
+# Per-instance voice synthesis tuning. Defaults are a balanced baseline;
+# override in instance .env to push toward unhinged (low stability + high
+# style) or measured (high stability + low style).
+TTS_STABILITY    = float(os.getenv("TTS_STABILITY", "0.35"))
+TTS_SIMILARITY   = float(os.getenv("TTS_SIMILARITY", "0.85"))
+TTS_STYLE        = float(os.getenv("TTS_STYLE", "0.60"))
 
 
 def _is_cjk(text: str, threshold: float = 0.3) -> bool:
@@ -70,9 +76,9 @@ def synthesize(text: str, voice_id: str = DEFAULT_VOICE_ID, model: str = DEFAULT
         "text": text,
         "model_id": model,
         "voice_settings": {
-            "stability": 0.35,
-            "similarity_boost": 0.85,
-            "style": 0.60,
+            "stability": TTS_STABILITY,
+            "similarity_boost": TTS_SIMILARITY,
+            "style": TTS_STYLE,
             "use_speaker_boost": True,
         },
     }
