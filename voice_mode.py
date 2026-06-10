@@ -52,6 +52,7 @@ class VoiceModeConfig:
     allow_user_ids: frozenset
     pairs: dict  # text_channel_id (int) -> voice_channel_id (int)
     token_file: str = None  # optional env-format file holding DISCORD_BOT_TOKEN
+    enabled: bool = True  # master switch — lets an external controller force text mode
 
     @classmethod
     def load(cls, path: str = CONFIG_PATH) -> "VoiceModeConfig":
@@ -65,6 +66,7 @@ class VoiceModeConfig:
             allow_user_ids=frozenset(int(u) for u in data["allow_user_ids"]),
             pairs={int(k): int(v) for k, v in data["pairs"].items()},
             token_file=data.get("token_file"),
+            enabled=bool(data.get("enabled", True)),
         )
 
     def paired_vc(self, text_channel_id: int):
@@ -208,6 +210,11 @@ def main() -> int:
         if cfg is None:
             _emit({"ok": False, "error": f"config not found: {CONFIG_PATH}"})
             return 1
+        if not cfg.enabled:
+            # Master switch off — answer without burning a gateway connect
+            key = "active" if args.cmd == "check" else "played"
+            _emit({"ok": True, key: False, "reason": "voice mode disabled"})
+            return 0
         if args.cmd == "check":
             action = make_check(cfg, args.text_channel_id)
         else:

@@ -30,6 +30,16 @@ def test_config_token_file_optional(tmp_path):
     assert VoiceModeConfig.load(path).token_file == "/x/.env"
 
 
+def test_config_enabled_defaults_true(tmp_path):
+    path = write_config(tmp_path, {"allow_user_ids": [], "pairs": {}})
+    assert VoiceModeConfig.load(path).enabled is True
+
+
+def test_config_enabled_false_respected(tmp_path):
+    path = write_config(tmp_path, {"allow_user_ids": [], "pairs": {}, "enabled": False})
+    assert VoiceModeConfig.load(path).enabled is False
+
+
 def test_paired_vc_returns_none_for_unmapped_channel(tmp_path):
     path = write_config(tmp_path, {"allow_user_ids": ["111"], "pairs": {"1000": "2000"}})
     cfg = VoiceModeConfig.load(path)
