@@ -12,3 +12,4 @@ transcripts/
 # committed. Public repo; these inevitably leak internal infra details.
 docs/superpowers/
 docs/handoff-prompts/
+voice_mode.json
