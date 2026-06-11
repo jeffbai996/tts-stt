@@ -196,16 +196,18 @@ def make_play(cfg: VoiceModeConfig, text_channel_id: int, mp3_path: str):
 def vc_tts_request(text: str, voice_id: str, api_key: str) -> tuple:
     """Build (url, headers, payload) for the streaming VC synthesis request.
 
-    Pure so it's testable. VC speech trades polish for snappiness: Flash model
-    (~75ms time-to-first-byte vs seconds on v3) and native `speed` in
-    voice_settings instead of a post-hoc ffmpeg atempo pass (a stream can't be
-    atempo'd after the fact anyway).
+    Pure so it's testable. Default model is v3: Flash/Turbo cut seconds of
+    synthesis time but render a generic voice instead of the assigned one
+    (A/B'd live 2026-06-11 — Lao Dao lost his Beijing accent entirely on
+    Flash). Since the clip downloads in parallel with the voice handshake,
+    v3's slower render mostly hides behind the connect anyway. Speed is
+    native in voice_settings, not a post-hoc ffmpeg atempo pass.
     """
     url = f"https://api.elevenlabs.io/v1/text-to-speech/{voice_id}/stream"
     headers = {"xi-api-key": api_key, "Content-Type": "application/json"}
     payload = {
         "text": text,
-        "model_id": os.getenv("TTS_MODEL_VC", "eleven_flash_v2_5"),
+        "model_id": os.getenv("TTS_MODEL_VC", "eleven_v3"),
         "voice_settings": {
             "stability": float(os.getenv("TTS_STABILITY", "0.35")),
             "similarity_boost": float(os.getenv("TTS_SIMILARITY", "0.85")),
