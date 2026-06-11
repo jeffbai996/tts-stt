@@ -3,7 +3,33 @@ import json
 
 import pytest
 
-from voice_mode import VoiceModeConfig, allowlisted_present, vc_tts_request
+from voice_mode import VoiceModeConfig, allowlisted_present, vc_tts_request, resolve_config_path
+import voice_mode
+
+
+def test_resolve_config_explicit_env_wins(monkeypatch, tmp_path):
+    agent_cfg = tmp_path / "agent" ; agent_cfg.mkdir()
+    (agent_cfg / "voice_mode.json").write_text("{}")
+    monkeypatch.setenv("VOICE_MODE_CONFIG", "/explicit/path.json")
+    monkeypatch.setenv("CLAUDE_CONFIG_DIR", str(agent_cfg))
+    assert resolve_config_path() == "/explicit/path.json"
+
+
+def test_resolve_config_prefers_agent_dir_when_present(monkeypatch, tmp_path):
+    agent_cfg = tmp_path / "agent" ; agent_cfg.mkdir()
+    cfg_file = agent_cfg / "voice_mode.json"
+    cfg_file.write_text("{}")
+    monkeypatch.delenv("VOICE_MODE_CONFIG", raising=False)
+    monkeypatch.setenv("CLAUDE_CONFIG_DIR", str(agent_cfg))
+    assert resolve_config_path() == str(cfg_file)
+
+
+def test_resolve_config_falls_back_to_repo_default(monkeypatch, tmp_path):
+    monkeypatch.delenv("VOICE_MODE_CONFIG", raising=False)
+    monkeypatch.setenv("CLAUDE_CONFIG_DIR", str(tmp_path))  # no voice_mode.json inside
+    assert resolve_config_path() == voice_mode.DEFAULT_CONFIG_PATH
+    monkeypatch.delenv("CLAUDE_CONFIG_DIR", raising=False)
+    assert resolve_config_path() == voice_mode.DEFAULT_CONFIG_PATH
 
 
 def write_config(tmp_path, data) -> str:

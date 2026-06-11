@@ -39,7 +39,25 @@ load_dotenv()
 
 BOT_TOKEN = os.getenv("DISCORD_BOT_TOKEN")
 DEFAULT_CONFIG_PATH = os.path.join(os.path.dirname(__file__), "voice_mode.json")
-CONFIG_PATH = os.getenv("VOICE_MODE_CONFIG", DEFAULT_CONFIG_PATH)
+
+
+def resolve_config_path() -> str:
+    """Pick the config for THIS bot instance.
+
+    Several bots can share this repo checkout; each must land on its own
+    config or one bot ends up speaking through another's pairing. Order:
+    explicit VOICE_MODE_CONFIG > the running agent's CLAUDE_CONFIG_DIR
+    (set per bot instance) > the repo-local default.
+    """
+    explicit = os.getenv("VOICE_MODE_CONFIG")
+    if explicit:
+        return explicit
+    agent_dir = os.getenv("CLAUDE_CONFIG_DIR")
+    if agent_dir:
+        candidate = os.path.join(agent_dir, "voice_mode.json")
+        if os.path.exists(candidate):
+            return candidate
+    return DEFAULT_CONFIG_PATH
 # Hard ceiling on gateway connect + action so callers never hang on a bad network
 TIMEOUT_S = float(os.getenv("VOICE_MODE_TIMEOUT_S", "30"))
 
@@ -55,7 +73,8 @@ class VoiceModeConfig:
     enabled: bool = True  # master switch — lets an external controller force text mode
 
     @classmethod
-    def load(cls, path: str = CONFIG_PATH) -> "VoiceModeConfig":
+    def load(cls, path: str = None) -> "VoiceModeConfig":
+        path = path or resolve_config_path()
         with open(path) as f:
             data = json.load(f)
         if "allow_user_ids" not in data:
@@ -291,7 +310,7 @@ def main() -> int:
         action = cmd_channels
     else:
         if cfg is None:
-            _emit({"ok": False, "error": f"config not found: {CONFIG_PATH}"})
+            _emit({"ok": False, "error": f"config not found: {resolve_config_path()}"})
             return 1
         if not cfg.enabled:
             # Master switch off — answer without burning a gateway connect
