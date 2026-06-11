@@ -106,10 +106,12 @@ def test_vc_tts_request_uses_stream_endpoint_and_v3_default(monkeypatch):
     assert payload["model_id"] == "eleven_v3"
 
 
-def test_vc_tts_request_native_speed_no_atempo(monkeypatch):
+def test_vc_tts_request_payload_has_no_speed_key(monkeypatch):
+    # v3 doesn't honor `speed` and it degrades naturalness — tempo is applied
+    # at playback via ffmpeg atempo, so the synthesis payload must stay clean
     monkeypatch.setenv("TTS_SPEED", "1.1")
     _, _, payload = vc_tts_request("hi", "v", "k")
-    assert payload["voice_settings"]["speed"] == 1.1
+    assert "speed" not in payload["voice_settings"]
 
 
 def test_vc_tts_request_model_env_override(monkeypatch):

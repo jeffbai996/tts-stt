@@ -200,8 +200,12 @@ def vc_tts_request(text: str, voice_id: str, api_key: str) -> tuple:
     synthesis time but render a generic voice instead of the assigned one
     (A/B'd live 2026-06-11 — Lao Dao lost his Beijing accent entirely on
     Flash). Since the clip downloads in parallel with the voice handshake,
-    v3's slower render mostly hides behind the connect anyway. Speed is
-    native in voice_settings, not a post-hoc ffmpeg atempo pass.
+    v3's slower render mostly hides behind the connect anyway.
+
+    The payload mirrors speak.py's known-good settings exactly — no `speed`
+    key: v3 doesn't honor it properly and it audibly degraded naturalness
+    (A/B'd 2026-06-11). Tempo is applied at playback via ffmpeg atempo
+    instead, same as speak.py always did.
     """
     url = f"https://api.elevenlabs.io/v1/text-to-speech/{voice_id}/stream"
     headers = {"xi-api-key": api_key, "Content-Type": "application/json"}
@@ -213,7 +217,6 @@ def vc_tts_request(text: str, voice_id: str, api_key: str) -> tuple:
             "similarity_boost": float(os.getenv("TTS_SIMILARITY", "0.85")),
             "style": float(os.getenv("TTS_STYLE", "0.60")),
             "use_speaker_boost": True,
-            "speed": float(os.getenv("TTS_SPEED", "1.05")),
         },
     }
     return url, headers, payload
@@ -268,7 +271,11 @@ def make_say(cfg: VoiceModeConfig, text_channel_id: int, text: str, voice_id: st
             if buf.tell() == 0:
                 return {"ok": False, "error": "tts synthesis returned no audio"}
             buf.seek(0)
-            voice.play(discord.FFmpegPCMAudio(buf, pipe=True))
+            # Tempo at decode time — pitch-preserving, identical to speak.py's
+            # old atempo pass but free (ffmpeg is already decoding for playback)
+            speed = float(os.getenv("TTS_SPEED", "1.05"))
+            opts = f"-filter:a atempo={speed}" if speed != 1.0 else None
+            voice.play(discord.FFmpegPCMAudio(buf, pipe=True, options=opts))
             while voice.is_playing():
                 await asyncio.sleep(0.3)
         finally:
