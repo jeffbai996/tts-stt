@@ -3,7 +3,7 @@ import json
 
 import pytest
 
-from voice_mode import VoiceModeConfig, allowlisted_present
+from voice_mode import VoiceModeConfig, allowlisted_present, vc_tts_request
 
 
 def write_config(tmp_path, data) -> str:
@@ -70,3 +70,23 @@ def test_allowlisted_present_false_when_no_overlap():
 
 def test_allowlisted_present_false_when_vc_empty():
     assert allowlisted_present(set(), {111, 222}) is False
+
+
+def test_vc_tts_request_uses_stream_endpoint_and_flash_default(monkeypatch):
+    monkeypatch.delenv("TTS_MODEL_VC", raising=False)
+    url, headers, payload = vc_tts_request("hi", "voice123", "key456")
+    assert url.endswith("/voice123/stream")
+    assert headers["xi-api-key"] == "key456"
+    assert payload["model_id"] == "eleven_flash_v2_5"
+
+
+def test_vc_tts_request_native_speed_no_atempo(monkeypatch):
+    monkeypatch.setenv("TTS_SPEED", "1.1")
+    _, _, payload = vc_tts_request("hi", "v", "k")
+    assert payload["voice_settings"]["speed"] == 1.1
+
+
+def test_vc_tts_request_model_env_override(monkeypatch):
+    monkeypatch.setenv("TTS_MODEL_VC", "eleven_turbo_v2_5")
+    _, _, payload = vc_tts_request("hi", "v", "k")
+    assert payload["model_id"] == "eleven_turbo_v2_5"

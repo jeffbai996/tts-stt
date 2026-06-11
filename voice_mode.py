@@ -174,6 +174,84 @@ def make_play(cfg: VoiceModeConfig, text_channel_id: int, mp3_path: str):
     return play
 
 
+def vc_tts_request(text: str, voice_id: str, api_key: str) -> tuple:
+    """Build (url, headers, payload) for the streaming VC synthesis request.
+
+    Pure so it's testable. VC speech trades polish for snappiness: Flash model
+    (~75ms time-to-first-byte vs seconds on v3) and native `speed` in
+    voice_settings instead of a post-hoc ffmpeg atempo pass (a stream can't be
+    atempo'd after the fact anyway).
+    """
+    url = f"https://api.elevenlabs.io/v1/text-to-speech/{voice_id}/stream"
+    headers = {"xi-api-key": api_key, "Content-Type": "application/json"}
+    payload = {
+        "text": text,
+        "model_id": os.getenv("TTS_MODEL_VC", "eleven_flash_v2_5"),
+        "voice_settings": {
+            "stability": float(os.getenv("TTS_STABILITY", "0.35")),
+            "similarity_boost": float(os.getenv("TTS_SIMILARITY", "0.85")),
+            "style": float(os.getenv("TTS_STYLE", "0.60")),
+            "use_speaker_boost": True,
+            "speed": float(os.getenv("TTS_SPEED", "1.05")),
+        },
+    }
+    return url, headers, payload
+
+
+def _start_tts_stream(text: str, voice_id: str, write_fd: int) -> "threading.Thread":
+    """Stream ElevenLabs audio chunks into a pipe from a worker thread.
+
+    The read end feeds ffmpeg, so playback starts on the first chunk while the
+    tail is still synthesising. Errors surface as a closed pipe; the caller
+    treats zero-byte audio as failure.
+    """
+    import threading
+    import requests
+
+    url, headers, payload = vc_tts_request(text, voice_id, os.getenv("ELEVENLABS_API_KEY", ""))
+
+    def pump() -> None:
+        try:
+            with requests.post(url, headers=headers, json=payload, stream=True, timeout=30) as resp:
+                resp.raise_for_status()
+                for chunk in resp.iter_content(chunk_size=8192):
+                    if chunk:
+                        os.write(write_fd, chunk)
+        except Exception as e:
+            log.warning("tts stream failed: %s", e)
+        finally:
+            os.close(write_fd)
+
+    t = threading.Thread(target=pump, daemon=True)
+    t.start()
+    return t
+
+
+def make_say(cfg: VoiceModeConfig, text_channel_id: int, text: str, voice_id: str):
+    """One-shot speak: presence gate, then TTS-stream and VC-join in parallel,
+    playing chunks as they arrive. Single process, no intermediate mp3 file."""
+    async def say(client: discord.Client) -> dict:
+        vc, err = _resolve_vc(client, cfg, text_channel_id)
+        if err:
+            return err
+        if not allowlisted_present(_present_ids(vc), cfg.allow_user_ids):
+            return {"ok": True, "played": False, "reason": "no allowlisted user in voice channel"}
+        # Gate passed — kick off synthesis while the voice handshake runs
+        read_fd, write_fd = os.pipe()
+        reader = os.fdopen(read_fd, "rb")
+        _start_tts_stream(text, voice_id, write_fd)
+        voice = await vc.connect()
+        try:
+            voice.play(discord.FFmpegPCMAudio(reader, pipe=True))
+            while voice.is_playing():
+                await asyncio.sleep(0.3)
+        finally:
+            await voice.disconnect()
+            reader.close()
+        return {"ok": True, "played": True, "vc_id": str(vc.id), "vc_name": vc.name}
+    return say
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description="Voice-mode routing for Discord TTS")
     sub = parser.add_subparsers(dest="cmd", required=True)
@@ -183,6 +261,11 @@ def main() -> int:
     p_play = sub.add_parser("play", help="Play an mp3 in the voice channel paired with a text channel")
     p_play.add_argument("text_channel_id", type=int)
     p_play.add_argument("mp3_path")
+    p_say = sub.add_parser("say", help="Synthesize and play text in one shot (streaming TTS, no mp3 file)")
+    p_say.add_argument("text_channel_id", type=int)
+    p_say.add_argument("text")
+    p_say.add_argument("--voice", default=os.getenv("TTS_VOICE_ID", ""),
+                       help="ElevenLabs voice ID (default: TTS_VOICE_ID from .env)")
     args = parser.parse_args()
 
     cfg = None
@@ -217,6 +300,14 @@ def main() -> int:
             return 0
         if args.cmd == "check":
             action = make_check(cfg, args.text_channel_id)
+        elif args.cmd == "say":
+            if not args.voice:
+                _emit({"ok": False, "error": "no voice id — pass --voice or set TTS_VOICE_ID in .env"})
+                return 1
+            if not os.getenv("ELEVENLABS_API_KEY"):
+                _emit({"ok": False, "error": "ELEVENLABS_API_KEY not set in .env"})
+                return 1
+            action = make_say(cfg, args.text_channel_id, args.text, args.voice)
         else:
             if not os.path.exists(args.mp3_path):
                 _emit({"ok": False, "error": f"file not found: {args.mp3_path}"})
