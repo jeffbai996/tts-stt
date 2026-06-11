@@ -217,17 +217,22 @@ def vc_tts_request(text: str, voice_id: str, api_key: str) -> tuple:
     return url, headers, payload
 
 
-def _start_tts_stream(text: str, voice_id: str, write_fd: int) -> "threading.Thread":
-    """Stream ElevenLabs audio chunks into a pipe from a worker thread.
+def _start_tts_stream(text: str, voice_id: str):
+    """Download ElevenLabs audio into memory from a worker thread.
 
-    The read end feeds ffmpeg, so playback starts on the first chunk while the
-    tail is still synthesising. Errors surface as a closed pipe; the caller
-    treats zero-byte audio as failure.
+    Runs concurrently with the Discord voice handshake, which is the slow part
+    — Flash renders a short reply faster than the gateway connects, so playback
+    waits on neither. The clip is fully buffered before play: feeding a live
+    pipe to ffmpeg caused audible stutter whenever a chunk arrived late
+    (discord.py consumes fixed 20ms frames and can't tolerate gaps).
+    Returns (thread, buffer); empty buffer after join = synthesis failed.
     """
+    import io
     import threading
     import requests
 
     url, headers, payload = vc_tts_request(text, voice_id, os.getenv("ELEVENLABS_API_KEY", ""))
+    buf = io.BytesIO()
 
     def pump() -> None:
         try:
@@ -235,15 +240,13 @@ def _start_tts_stream(text: str, voice_id: str, write_fd: int) -> "threading.Thr
                 resp.raise_for_status()
                 for chunk in resp.iter_content(chunk_size=8192):
                     if chunk:
-                        os.write(write_fd, chunk)
+                        buf.write(chunk)
         except Exception as e:
             log.warning("tts stream failed: %s", e)
-        finally:
-            os.close(write_fd)
 
     t = threading.Thread(target=pump, daemon=True)
     t.start()
-    return t
+    return t, buf
 
 
 def make_say(cfg: VoiceModeConfig, text_channel_id: int, text: str, voice_id: str):
@@ -255,18 +258,19 @@ def make_say(cfg: VoiceModeConfig, text_channel_id: int, text: str, voice_id: st
             return err
         if not allowlisted_present(_present_ids(vc), cfg.allow_user_ids):
             return {"ok": True, "played": False, "reason": "no allowlisted user in voice channel"}
-        # Gate passed — kick off synthesis while the voice handshake runs
-        read_fd, write_fd = os.pipe()
-        reader = os.fdopen(read_fd, "rb")
-        _start_tts_stream(text, voice_id, write_fd)
+        # Gate passed — synthesis downloads while the voice handshake runs
+        tts_thread, buf = _start_tts_stream(text, voice_id)
         voice = await vc.connect()
         try:
-            voice.play(discord.FFmpegPCMAudio(reader, pipe=True))
+            await asyncio.get_running_loop().run_in_executor(None, tts_thread.join, 25)
+            if buf.tell() == 0:
+                return {"ok": False, "error": "tts synthesis returned no audio"}
+            buf.seek(0)
+            voice.play(discord.FFmpegPCMAudio(buf, pipe=True))
             while voice.is_playing():
                 await asyncio.sleep(0.3)
         finally:
             await voice.disconnect()
-            reader.close()
         return {"ok": True, "played": True, "vc_id": str(vc.id), "vc_name": vc.name}
     return say
 
