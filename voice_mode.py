@@ -30,6 +30,8 @@ import json
 import asyncio
 import argparse
 import logging
+import fcntl
+from contextlib import contextmanager
 from dataclasses import dataclass
 
 import discord
@@ -60,6 +62,23 @@ def resolve_config_path() -> str:
     return DEFAULT_CONFIG_PATH
 # Hard ceiling on gateway connect + action so callers never hang on a bad network
 TIMEOUT_S = float(os.getenv("VOICE_MODE_TIMEOUT_S", "30"))
+
+# Discord allows one active voice connection per bot-user per guild. Each
+# play/say invocation is its own process with its own gateway session, so two
+# overlapping calls targeting the same VC (e.g. two paired text channels, or a
+# cron-fired reminder landing mid-chat) would have the second connect() kick
+# the first mid-playback. Serialize per-VC with a blocking file lock so the
+# second call just waits its turn instead of colliding.
+@contextmanager
+def _vc_lock(vc_id: int):
+    path = f"/tmp/voice_mode_vc_{vc_id}.lock"
+    fd = os.open(path, os.O_CREAT | os.O_RDWR, 0o644)
+    try:
+        fcntl.flock(fd, fcntl.LOCK_EX)
+        yield
+    finally:
+        fcntl.flock(fd, fcntl.LOCK_UN)
+        os.close(fd)
 
 logging.basicConfig(level=logging.WARNING)
 log = logging.getLogger(__name__)
@@ -182,13 +201,14 @@ def make_play(cfg: VoiceModeConfig, text_channel_id: int, mp3_path: str):
             return err
         if not allowlisted_present(_present_ids(vc), cfg.allow_user_ids):
             return {"ok": True, "played": False, "reason": "no allowlisted user in voice channel"}
-        voice = await vc.connect()
-        try:
-            voice.play(discord.FFmpegPCMAudio(mp3_path))
-            while voice.is_playing():
-                await asyncio.sleep(0.5)
-        finally:
-            await voice.disconnect()
+        with _vc_lock(vc.id):
+            voice = await vc.connect()
+            try:
+                voice.play(discord.FFmpegPCMAudio(mp3_path))
+                while voice.is_playing():
+                    await asyncio.sleep(0.5)
+            finally:
+                await voice.disconnect()
         return {"ok": True, "played": True, "vc_id": str(vc.id), "vc_name": vc.name}
     return play
 
@@ -263,23 +283,27 @@ def make_say(cfg: VoiceModeConfig, text_channel_id: int, text: str, voice_id: st
             return err
         if not allowlisted_present(_present_ids(vc), cfg.allow_user_ids):
             return {"ok": True, "played": False, "reason": "no allowlisted user in voice channel"}
-        # Gate passed — synthesis downloads while the voice handshake runs
+        # Gate passed — synthesis downloads while the voice handshake runs.
+        # Lock is acquired around connect/play/disconnect only, so a call
+        # queued behind another's lock still has its TTS ready by the time
+        # it gets in rather than waiting twice.
         tts_thread, buf = _start_tts_stream(text, voice_id)
-        voice = await vc.connect()
-        try:
-            await asyncio.get_running_loop().run_in_executor(None, tts_thread.join, 25)
-            if buf.tell() == 0:
-                return {"ok": False, "error": "tts synthesis returned no audio"}
-            buf.seek(0)
-            # Tempo at decode time — pitch-preserving, identical to speak.py's
-            # old atempo pass but free (ffmpeg is already decoding for playback)
-            speed = float(os.getenv("TTS_SPEED", "1.05"))
-            opts = f"-filter:a atempo={speed}" if speed != 1.0 else None
-            voice.play(discord.FFmpegPCMAudio(buf, pipe=True, options=opts))
-            while voice.is_playing():
-                await asyncio.sleep(0.3)
-        finally:
-            await voice.disconnect()
+        with _vc_lock(vc.id):
+            voice = await vc.connect()
+            try:
+                await asyncio.get_running_loop().run_in_executor(None, tts_thread.join, 25)
+                if buf.tell() == 0:
+                    return {"ok": False, "error": "tts synthesis returned no audio"}
+                buf.seek(0)
+                # Tempo at decode time — pitch-preserving, identical to speak.py's
+                # old atempo pass but free (ffmpeg is already decoding for playback)
+                speed = float(os.getenv("TTS_SPEED", "1.05"))
+                opts = f"-filter:a atempo={speed}" if speed != 1.0 else None
+                voice.play(discord.FFmpegPCMAudio(buf, pipe=True, options=opts))
+                while voice.is_playing():
+                    await asyncio.sleep(0.3)
+            finally:
+                await voice.disconnect()
         return {"ok": True, "played": True, "vc_id": str(vc.id), "vc_name": vc.name}
     return say
 
