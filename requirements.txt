@@ -7,7 +7,7 @@ attrs==26.1.0
 certifi==2026.2.25
 cffi==2.0.0
 charset-normalizer==3.4.7
-davey==0.1.5
+davey==0.1.6
 discord.py==2.7.1
 elevenlabs==2.42.0
 frozenlist==1.8.0
