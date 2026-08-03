@@ -6,7 +6,7 @@ anyio==4.13.0
 attrs==26.1.0
 certifi==2026.2.25
 cffi==2.1.0
-charset-normalizer==3.4.7
+charset-normalizer==3.4.9
 davey==0.1.6
 discord.py==2.7.1
 elevenlabs==2.58.0
