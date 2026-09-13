@@ -1,9 +1,51 @@
-"""Tests for listen.py — batch STT via local whisper CLI."""
+"""Tests for listen.py — STT via a resident whisper service, CLI as fallback."""
+import io
+import json
 import os
 import shutil
+import urllib.error
 
 import pytest
 from unittest.mock import MagicMock
+
+
+@pytest.fixture(autouse=True)
+def service_unreachable(monkeypatch):
+    """Default every test to the CLI path.
+
+    The service is tried first now, and a developer box may well have one
+    running on :8771 — without this the CLI tests below would quietly stop
+    testing the CLI. Tests that want a service install their own fake.
+    """
+    import listen
+
+    def refused(*args, **kwargs):
+        raise urllib.error.URLError("connection refused")
+
+    monkeypatch.setattr(listen.urllib.request, "urlopen", refused)
+
+
+class _FakeResponse(io.BytesIO):
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *exc):
+        self.close()
+        return False
+
+
+def _fake_service(monkeypatch, result: dict):
+    """Point listen.py's HTTP client at a canned response; record the request."""
+    import listen
+    sent = {}
+
+    def fake_urlopen(req, timeout=None):
+        sent["url"] = req.full_url
+        sent["body"] = json.loads(req.data.decode())
+        return _FakeResponse(json.dumps(result).encode())
+
+    monkeypatch.setattr(listen.urllib.request, "urlopen", fake_urlopen)
+    return sent
 
 
 def _mock_whisper_success(output_dir: str, audio_path: str, transcript: str = "hello world"):
@@ -302,3 +344,74 @@ def test_transcribes_real_speech(tmp_output_dir, monkeypatch):
     assert "hello" in transcript or "test" in transcript, (
         f"expected transcript to contain 'hello' or 'test', got: {transcript!r}"
     )
+
+
+# ─── resident service ────────────────────────────────────────────────────────
+
+def test_service_is_used_when_it_answers(sample_audio, tmp_output_dir, monkeypatch):
+    """A reachable service transcribes without shelling out to the CLI at all."""
+    from listen import transcribe
+    sent = _fake_service(monkeypatch, {"text": "  hello from the service  "})
+
+    def fail(*args, **kwargs):
+        raise AssertionError("CLI must not run when the service answers")
+
+    monkeypatch.setattr("listen.subprocess.run", fail)
+
+    assert transcribe(sample_audio) == "hello from the service"
+    assert sent["url"].endswith("/transcribe")
+
+
+def test_service_receives_an_absolute_path(sample_audio, tmp_output_dir, monkeypatch):
+    """The server opens the file itself, so a relative path would resolve
+    against the server's working directory, not the caller's."""
+    from listen import transcribe
+    sent = _fake_service(monkeypatch, {"text": "x"})
+    transcribe(sample_audio)
+    assert sent["body"]["path"] == os.path.abspath(sample_audio)
+
+
+def test_service_receives_the_language(sample_audio, tmp_output_dir, monkeypatch):
+    from listen import transcribe
+    sent = _fake_service(monkeypatch, {"text": "x"})
+    transcribe(sample_audio, language="zh")
+    assert sent["body"]["language"] == "zh"
+
+
+def test_falls_back_to_the_cli_when_the_service_is_down(sample_audio, tmp_output_dir,
+                                                        monkeypatch):
+    """The autouse fixture already refuses the connection — this asserts the
+    consequence: a transcript still comes back, via the CLI."""
+    from listen import transcribe
+    monkeypatch.setattr("listen.shutil.which", lambda _: "/usr/local/bin/whisper")
+    monkeypatch.setattr("listen.DEFAULT_OUTPUT_DIR", str(tmp_output_dir))
+    monkeypatch.setattr(
+        "listen.subprocess.run",
+        lambda cmd, **kw: _mock_whisper_success(str(tmp_output_dir), sample_audio),
+    )
+    assert transcribe(sample_audio) == "hello world"
+
+
+def test_empty_service_url_skips_the_service(sample_audio, tmp_output_dir,
+                                             monkeypatch):
+    """STT_SERVICE_URL='' is how a box says 'CLI only' — no probe, no wait."""
+    import listen
+    monkeypatch.setattr(listen, "DEFAULT_SERVICE_URL", "")
+
+    def fail(*args, **kwargs):
+        raise AssertionError("must not contact a service when the URL is empty")
+
+    monkeypatch.setattr(listen.urllib.request, "urlopen", fail)
+    assert listen.transcribe_via_service(sample_audio) is None
+
+
+def test_missing_file_is_caught_before_the_service(tmp_output_dir, monkeypatch):
+    """Cheap local check first — no round trip to learn the path is wrong."""
+    import listen
+
+    def fail(*args, **kwargs):
+        raise AssertionError("must not contact the service for a missing file")
+
+    monkeypatch.setattr(listen.urllib.request, "urlopen", fail)
+    with pytest.raises(RuntimeError, match="file not found"):
+        listen.transcribe("/nonexistent/path/audio.ogg")
