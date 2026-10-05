@@ -9,7 +9,7 @@ cffi==2.1.0
 charset-normalizer==3.4.9
 davey==0.1.6
 discord.py==2.7.1
-elevenlabs==2.58.0
+elevenlabs==2.62.0
 frozenlist==1.8.0
 h11==0.16.0
 httpcore==1.0.9
