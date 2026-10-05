@@ -1,15 +1,30 @@
 """
 tts-stt — audio file → whisper → transcript on stdout.
 
+Prefers a resident faster-whisper service when one is reachable (STT_SERVICE_URL),
+because loading a model costs seconds on every clip and a resident server has
+already paid that once. Falls back to the local `whisper` CLI, which is what
+makes this work on a laptop with no service and no GPU.
+
 Usage:
     python listen.py /path/to/audio.ogg
 """
+import json
 import os
 import shutil
 import subprocess
+import urllib.error
+import urllib.request
 from dotenv import load_dotenv
 
 load_dotenv()
+
+# A resident faster-whisper server speaking {"path"|audio bytes} -> {"text"}.
+# Empty disables the service path entirely and always uses the CLI.
+DEFAULT_SERVICE_URL = os.getenv("STT_SERVICE_URL", "http://127.0.0.1:8771")
+SERVICE_TIMEOUT = float(os.getenv("STT_SERVICE_TIMEOUT", "300"))
+
+_NET_ERRORS = (urllib.error.URLError, OSError, ValueError, json.JSONDecodeError)
 
 # Defaults matching the spec. All overridable via .env or CLI flag.
 DEFAULT_MODEL = os.getenv("STT_MODEL", "base")
@@ -23,20 +38,53 @@ DEFAULT_OUTPUT_DIR = os.getenv("STT_OUTPUT_DIR", _DEFAULT_OUTPUT_DIR)
 _WHISPER_EXTENSIONS = ("txt", "json", "srt", "vtt", "tsv")
 
 
+def transcribe_via_service(
+    audio_path: str,
+    language: str | None = None,
+    service_url: str | None = None,
+) -> str | None:
+    """Transcribe through a resident whisper server. None if it cannot serve.
+
+    Returns None rather than raising so the caller falls back to the CLI: a
+    service that is down should cost time, never a transcript.
+    """
+    base = (DEFAULT_SERVICE_URL if service_url is None else service_url).rstrip("/")
+    if not base:
+        return None
+    body = json.dumps({
+        "path": os.path.abspath(audio_path),
+        "language": language or "auto",
+    }).encode()
+    req = urllib.request.Request(
+        f"{base}/transcribe", data=body,
+        headers={"Content-Type": "application/json"}, method="POST",
+    )
+    try:
+        with urllib.request.urlopen(req, timeout=SERVICE_TIMEOUT) as resp:
+            return (json.load(resp).get("text") or "").strip()
+    except _NET_ERRORS:
+        return None
+
+
 def transcribe(
     audio_path: str,
     model: str | None = None,
     language: str | None = None,
     output_dir: str | None = None,
 ) -> str:
-    """Transcribe audio file to text via local whisper CLI.
+    """Transcribe audio file to text.
 
-    Args overrides .env overrides defaults.
+    Uses a resident whisper service when one answers, otherwise the local
+    whisper CLI. Args overrides .env overrides defaults.
     Returns stripped transcript. Empty string for silent audio.
     Raises RuntimeError on any failure.
     """
     if not os.path.exists(audio_path):
         raise RuntimeError(f"file not found: {audio_path}")
+
+    text = transcribe_via_service(audio_path, language or DEFAULT_LANGUAGE)
+    if text is not None:
+        return text
 
     whisper_bin = shutil.which("whisper")
     if whisper_bin is None:
