@@ -23,7 +23,7 @@ pydantic_core==2.46.5
 PyNaCl==1.6.2
 python-dotenv==1.2.4
 requests==2.34.2
-typing-inspection==0.4.2
+typing-inspection==0.4.4
 typing_extensions==4.16.0
 urllib3==2.6.3
 websockets==16.0
